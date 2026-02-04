@@ -1,0 +1,8 @@
+{
+  "name": "Sika Wura AI CRM",
+  "description": "Smart CRM + Enterprise Financial Hub with Multilingual Voice AI. Features BigCapital-style ledgers, Docyt-style OCR, and African-focused business advisory.",
+  "requestFramePermissions": [
+    "microphone",
+    "camera"
+  ]
+}
