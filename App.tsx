@@ -4,6 +4,7 @@ import Navigation from './components/Navigation';
 import Dashboard from './components/Dashboard';
 import Translator from './components/Translator';
 import FinancialHub from './components/FinancialHub';
+import EcommerceSuite from './components/EcommerceSuite';
 import Advisor from './components/Advisor';
 import Planner from './components/Planner';
 import CRM from './components/CRM';
@@ -22,6 +23,7 @@ const App: React.FC = () => {
       case AppTab.DASHBOARD: return <Dashboard />;
       case AppTab.CRM: return <CRM />;
       case AppTab.FINANCE: return <FinancialHub />;
+      case AppTab.ECOMMERCE: return <EcommerceSuite />;
       case AppTab.TRANSLATOR: return <Translator />;
       case AppTab.ADVISOR: return <Advisor />;
       case AppTab.PLANNER: return <Planner />;

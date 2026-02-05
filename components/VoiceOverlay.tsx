@@ -1,8 +1,8 @@
-
 import React, { useEffect, useRef, useState } from 'react';
 import { GoogleGenAI, Modality, Type, LiveServerMessage } from '@google/genai';
-import { Mic, MicOff, Volume2, Sparkles, Navigation, AlertCircle, RefreshCcw } from 'lucide-react';
+import { Mic, MicOff, Volume2, Sparkles, Navigation, AlertCircle, RefreshCcw, AudioLines, Play, Loader2 } from 'lucide-react';
 import { encode, decode, decodeAudioData } from '../services/voiceService';
+import { generateSpeech, getBusinessAdvice } from '../services/geminiService';
 import { AppTab } from '../types';
 
 interface VoiceOverlayProps {
@@ -12,6 +12,7 @@ interface VoiceOverlayProps {
 
 const VoiceOverlay: React.FC<VoiceOverlayProps> = ({ onNavigate, activeTab }) => {
   const [isActive, setIsActive] = useState(false);
+  const [isNarrating, setIsNarrating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [transcription, setTranscription] = useState('');
   const [aiTranscription, setAiTranscription] = useState('');
@@ -21,6 +22,39 @@ const VoiceOverlay: React.FC<VoiceOverlayProps> = ({ onNavigate, activeTab }) =>
   const nextStartTimeRef = useRef(0);
   const sessionRef = useRef<any>(null);
   const sourcesRef = useRef<Set<AudioBufferSourceNode>>(new Set());
+
+  // Helper for Narrate Insights (TTS)
+  const handleNarrateInsights = async () => {
+    if (isNarrating) return;
+    setIsNarrating(true);
+    try {
+      if (!audioContextOutRef.current) {
+        audioContextOutRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
+      }
+      await audioContextOutRef.current.resume();
+
+      // Get contextual insight for the current tab
+      const insightText = await getBusinessAdvice(`Summarize the current view for the ${activeTab} section and provide one strategic takeaway.`);
+      
+      // Generate High Quality Speech
+      const base64Audio = await generateSpeech(insightText, 'Zephyr');
+      
+      if (base64Audio) {
+        const ctx = audioContextOutRef.current;
+        const audioBuffer = await decodeAudioData(decode(base64Audio), ctx, 24000, 1);
+        const source = ctx.createBufferSource();
+        source.buffer = audioBuffer;
+        source.connect(ctx.destination);
+        source.start();
+        source.onended = () => setIsNarrating(false);
+      } else {
+        setIsNarrating(false);
+      }
+    } catch (err) {
+      console.error('Narrate error:', err);
+      setIsNarrating(false);
+    }
+  };
 
   // Manual downsampling helper to convert hardware sample rate to 16000Hz required by Gemini
   const downsample = (buffer: Float32Array, inputSampleRate: number, outputSampleRate: number) => {
@@ -73,29 +107,22 @@ const VoiceOverlay: React.FC<VoiceOverlayProps> = ({ onNavigate, activeTab }) =>
             const scriptProcessor = audioContextInRef.current!.createScriptProcessor(4096, 1, 1);
             
             scriptProcessor.onaudioprocess = (e) => {
-              // Ensure we only send if session is still the active one
               if (!isActive && !sessionRef.current) return;
-
               const inputData = e.inputBuffer.getChannelData(0);
               const downsampledData = downsample(inputData, inputSampleRate, 16000);
-              
               const int16 = new Int16Array(downsampledData.length);
               for (let i = 0; i < downsampledData.length; i++) {
                 const s = Math.max(-1, Math.min(1, downsampledData[i]));
                 int16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
               }
-              
               const pcmBlob = {
                 data: encode(new Uint8Array(int16.buffer)),
                 mimeType: 'audio/pcm;rate=16000',
               };
-              
               sessionPromise.then(session => {
                 try {
                   session.sendRealtimeInput({ media: pcmBlob });
-                } catch (e) {
-                  // Ignore send errors if session closed mid-process
-                }
+                } catch (e) {}
               }).catch(() => {});
             };
             
@@ -247,6 +274,21 @@ const VoiceOverlay: React.FC<VoiceOverlayProps> = ({ onNavigate, activeTab }) =>
         </div>
       )}
 
+      {/* Narrative AI Button (TTS gemini-2.5-flash-preview-tts) */}
+      <button
+        onClick={handleNarrateInsights}
+        disabled={isNarrating}
+        className={`w-14 h-14 rounded-full flex items-center justify-center transition-all shadow-xl group relative border border-slate-700 hover:border-amber-500/50 ${
+          isNarrating ? 'bg-amber-500 text-slate-900' : 'bg-slate-900 text-amber-500'
+        }`}
+      >
+        {isNarrating ? <Loader2 size={24} className="animate-spin" /> : <AudioLines size={24} />}
+        <div className="absolute right-16 scale-0 group-hover:scale-100 transition-transform bg-slate-900 text-white text-[10px] px-2 py-1 rounded whitespace-nowrap border border-slate-800 uppercase tracking-tighter shadow-2xl">
+          Narrate {activeTab} Insights
+        </div>
+      </button>
+
+      {/* Live Conversation Button */}
       <button
         onClick={isActive ? stopSession : startSession}
         className={`w-14 h-14 rounded-full flex items-center justify-center transition-all shadow-xl group relative ${
